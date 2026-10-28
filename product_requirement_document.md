@@ -61,6 +61,9 @@ Nutrition theme: leaf-green primary, a calorie ring as the main visual, and macr
 * `localStorage` is per browser and per device, so phone and laptop will not sync. Use JSON export/import to move data, or add Vercel KV or Supabase later if sync is needed.
 * Edit-in-place for saved foods and a weekly weight and trend view are the natural next features.
 
-
+## 8. AI food estimate (v2.1)
+* In "Add a new food", the user can type a description and/or attach a photo, then press "Estimate with AI". Gemini returns name, serving label, kcal, protein, carbs, and fats, which fill the form for review before saving. Saving adds it to the dropdown like any custom food.
+* Photos are shrunk to 1024 px in the browser before sending. The Gemini key and model name are stored only in this browser (`nutritrack_ai`) and are never written to backups or the Sheet.
+* Results are estimates and show a confidence level and the assumptions made. The user always confirms or edits before logging.
 
 https://script.google.com/macros/s/AKfycbyEWAKE71lIA5Gdk4DcYXsEQtdzCsOGJvRi-qVzKt_8OK59DaUo2mPFUWG3r2uRuPbr3Q/exec
