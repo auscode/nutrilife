@@ -510,7 +510,7 @@
         <div class="grid" style="margin-top:10px">
           <div><label for="aKey">Gemini API key</label><input id="aKey" type="password"
               placeholder="from aistudio.google.com" autocomplete="off"></div>
-          <div><label for="aModel">Model</label><input id="aModel" autocomplete="off"></div>
+          <div><label for="aModel">Model</label><select id="aModel"><option value="gemini-flash-latest">Flash (latest)</option><option value="gemini-flash-lite-latest">Flash-Lite (latest, lighter)</option><option value="custom">Custom name…</option></select><input id="aModelC" placeholder="exact model name" autocomplete="off" hidden style="margin-top:6px"></div>
         </div>
         <div class="tools"><button class="pri" id="aSave">Save</button></div>
         <p class="prev">The key is stored only in this browser and is sent only to Google. It is never copied to your
@@ -686,9 +686,14 @@
     const PROMPT = 'You are a careful nutrition estimator for Indian and gym foods. From the description and/or photo, estimate the TOTAL nutrition of everything shown or described, as ONE serving. Treat weights and counts in the description as correct. Include cooking oil, ghee and sugar when likely. If portion size is unclear, assume a typical home portion and say so in note (max 20 words). serving is a short label like "1 plate (350 g)". confidence is low, medium or high.';
     const N = { type: 'NUMBER' }, Z = { type: 'STRING' };
     const SCHEMA = { type: 'OBJECT', properties: { name: Z, serving: Z, calories: N, protein_g: N, carbs_g: N, fat_g: N, confidence: Z, note: Z }, required: ['name', 'serving', 'calories', 'protein_g', 'carbs_g', 'fat_g', 'confidence', 'note'] };
-    { const c = aiCfg(); $('aKey').value = c ? c.key : ''; $('aModel').value = c ? c.model : DEF }
+    function setModel(m) {
+      const s = $('aModel'), known = [...s.options].some(o => o.value === m && m !== 'custom');
+      s.value = known ? m : 'custom'; $('aModelC').hidden = known; $('aModelC').value = known ? '' : m;
+    }
+    $('aModel').onchange = () => { $('aModelC').hidden = $('aModel').value !== 'custom' };
+    { const c = aiCfg(); $('aKey').value = c ? c.key : ''; setModel(c ? c.model : DEF) }
     $('aSave').onclick = () => {
-      const key = $('aKey').value.trim(), model = $('aModel').value.trim() || DEF;
+      const sel = $('aModel').value, key = $('aKey').value.trim(), model = (sel === 'custom' ? $('aModelC').value.trim() : sel) || DEF;
       try { if (!key) { localStorage.removeItem(AK); toast('AI key removed') } else { localStorage.setItem(AK, JSON.stringify({ key, model })); toast('AI settings saved') } } catch (e) { toast('Browser storage is blocked') }
     };
     $('aiPhoto').onchange = () => { const f = $('aiPhoto').files[0]; $('aiFn').textContent = f ? f.name : '' };
@@ -707,8 +712,20 @@
       try {
         const parts = [{ text: PROMPT + (txt ? '\nDescription: ' + txt : '\nNo description. Use the photo only.') }];
         if (file) parts.push({ inline_data: { mime_type: 'image/jpeg', data: await shrink(file) } });
-        const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(c.model) + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': c.key }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: .2 } }) });
-        const d = await res.json();
+        const body = JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: .2 } });
+        const models = [c.model, 'gemini-flash-lite-latest'].filter((m, i, a) => a.indexOf(m) === i);
+        let res, d;
+        for (const m of models) {
+          for (let t = 0; t < 3; t++) {
+            if (t) $('aiNote').textContent = 'Gemini is busy, retrying…';
+            res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(m) + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': c.key }, body });
+            d = await res.json().catch(() => ({}));
+            if (res.ok || ![429, 500, 503].includes(res.status)) break;
+            await new Promise(r => setTimeout(r, 1500 * (t + 1)));
+          }
+          if (res.ok) break;
+          $('aiNote').textContent = 'Trying a lighter model…';
+        }
         if (!res.ok) throw new Error(d.error && d.error.message || 'HTTP ' + res.status);
         const o = JSON.parse(d.candidates[0].content.parts.filter(p => !p.thought).map(p => p.text || '').join(''));
         $('nn').value = o.name || txt.slice(0, 40); $('nu').value = o.serving || '1 serving';
